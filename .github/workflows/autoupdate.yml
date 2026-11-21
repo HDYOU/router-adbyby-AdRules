@@ -1,0 +1,136 @@
+name: Update Rules
+on: 
+  schedule:
+    - cron: '30 0,12 * * *'
+  #push:
+  # branches:
+  #  - main
+
+  workflow_dispatch:
+
+  repository_dispatch:
+   type:
+    - [Manual-Update]
+    
+  watch:
+    types: [started]
+
+# only one run
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true  # true false
+
+env:
+  SCKEY: ${{ secrets.SCKEY }}
+  PUSH_PUSH: ${{ secrets.PUSH_PUSH }}
+  GITHUBTOKEN: ${{ secrets.GITHUBTOKEN }}
+  TG_TOKEN: ${{ secrets.TG_TOKEN }}
+  CHAT_ID: ${{ secrets.CHAT_ID }}
+  REPO_NAME: ${{ github.event.repository.name }}
+  OWR_NAME: ${{ github.actor }}
+  NETLIFY_API: ${{ secrets.NETLIFY_API }}
+  RENDER_API_API: ${{ secrets.RENDER_API_API }}
+  
+jobs:
+  update-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+                
+     #   - name: Install rename
+     #     run: |
+     #       sudo apt update
+     #       sudo apt install rename
+      - name: Git fetch 
+        run: | 
+          git pull -f
+      - name: Update rules
+        run: |
+          mkdir -p rules
+          cd rules
+          rm -f *.txt
+          wget -O anti-ad-easylist-adbyby.txt https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-easylist.txt
+          
+          wget -O AdRules-adblock-adbyby.txt https://raw.githubusercontent.com/Cats-Team/AdRules/main/adblock.txt
+          
+          sed -i '/##/d'    anti-ad-easylist-adbyby.txt
+          sed -i '/#$#/d'   anti-ad-easylist-adbyby.txt
+          sed -i '/#@#/d'   anti-ad-easylist-adbyby.txt
+          sed -i '/#?#/d'   anti-ad-easylist-adbyby.txt
+          sed -i '/#$?#/d'  anti-ad-easylist-adbyby.txt
+          sed -i '/#@%#/d'  anti-ad-easylist-adbyby.txt
+          sed -i '/#@?#/d'  anti-ad-easylist-adbyby.txt
+          sed -i '/#@$#/d'  anti-ad-easylist-adbyby.txt
+          sed -i '/#@$?#/d' anti-ad-easylist-adbyby.txt
+          sed -i '/#%#/d'   anti-ad-easylist-adbyby.txt
+          
+          sed -i '/##/d'    AdRules-adblock-adbyby.txt
+          sed -i '/#$#/d'   AdRules-adblock-adbyby.txt
+          sed -i '/#@#/d'   AdRules-adblock-adbyby.txt
+          sed -i '/#?#/d'   AdRules-adblock-adbyby.txt
+          sed -i '/#$?#/d'  AdRules-adblock-adbyby.txt
+          sed -i '/#@%#/d'  AdRules-adblock-adbyby.txt
+          sed -i '/#@?#/d'  AdRules-adblock-adbyby.txt
+          sed -i '/#@$#/d'  AdRules-adblock-adbyby.txt
+          sed -i '/#@$?#/d' AdRules-adblock-adbyby.txt
+          sed -i '/#%#/d'   AdRules-adblock-adbyby.txt
+          
+          # wget -O AdRules-ad-domains.txt https://raw.githubusercontent.com/Cats-Team/AdRules/main/ad-domains.txt
+          wget -O AdRules-ad-domains.txt https://raw.githubusercontent.com/Cats-Team/AdRules/main/adrules_domainset.txt
+          sed -i '/!/d'     AdRules-ad-domains.txt
+          sed -i 's/+.//g'    AdRules-ad-domains.txt
+          sed -i '/#/d'     AdRules-ad-domains.txt
+          sed -i '/##/d'    AdRules-ad-domains.txt
+          sed -i '/###/d'   AdRules-ad-domains.txt
+          
+          cur_date=$(TZ=UTC-8 date +'%Y-%m-%d %H:%M:%S')
+          ad_domains_total=$(cat AdRules-ad-domains.txt | wc -l)
+          echo "" > title.header
+          echo "# Version: ${cur_date}" >> title.header
+          echo "# Homepage: https://github.com/${{ github.repository }}" >> title.header
+          echo "# Total count: ${ad_domains_total}" >> title.header
+          
+          awk '{print "0.0.0.0\t\t"$0}' AdRules-ad-domains.txt > AdRules-ad-hosts.txt.part
+          cat title.header AdRules-ad-hosts.txt.part > AdRules-ad-hosts.txt
+          
+          awk '{print "address=/"$0"/"}' AdRules-ad-domains.txt > AdRules-ad-dnsmasq.conf.part
+          cat title.header AdRules-ad-dnsmasq.conf.part > AdRules-ad-dnsmasq.conf
+          
+          rm -f AdRules-ad-domains.txt
+          
+          cp -rf *.txt  ../
+          cp -rf *.conf  ../
+          cd ../
+          rm -rf rules
+      - name: Git push assets to Github
+        continue-on-error: false
+        run: |
+          git init
+          git config --local user.name "GitHub Action"
+          git config --local user.email "action@github.com"
+          git branch -m main
+          git add .
+          git add --all
+          git checkout --orphan new_branch
+          git add -A
+          git commit -am "Updated at $(TZ=UTC-8 date +'%Y-%m-%d %H:%M:%S')"
+          git branch -D main 
+          git branch -m main
+          git branch -M main
+          git tag -l | xargs git tag -d
+          git push --force --set-upstream origin main
+      #  - name: Auto Built
+      #    continue-on-error: true
+      #    run: |
+      #      #curl -s -X POST -d {} "${{ secrets.NETLIFY_API }}"
+      #      #echo Nelify Built Pass
+      #      curl -s -X POST -d {} "${{ secrets.RENDER_API }}" &
+      #      echo Render Built Pass
+      #      curl -X POST "${{ secrets.CF_TOKEN }}"
+      - name: Delete workflow runs
+        uses: Mattraks/delete-workflow-runs@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 2
